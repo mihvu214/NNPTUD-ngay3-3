@@ -1,178 +1,247 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
+
 <head>
-<meta charset="UTF-8">
-<title>Product Dashboard</title>
+    <meta charset="UTF-8">
+    <title>Product Dashboard</title>
 
-<!-- Bootstrap -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<!-- CSS riêng -->
-<link rel="stylesheet" href="style.css">
+    <style>
+        .sortable {
+            cursor: pointer;
+        }
+
+        .product-img {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+    </style>
 </head>
 
-<body>
+<body class="bg-light">
 
-<div class="container mt-4">
+<div class="container py-4">
 
-<h2 class="mb-4">Product Dashboard</h2>
+    <h2 class="text-center mb-4">Product Dashboard</h2>
 
-<div class="row mb-3">
-    <div class="col-md-6">
-        <input id="searchInput" class="form-control"
-            placeholder="Search by title...">
+    <!-- Search + Limit -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <input type="text"
+                   id="searchInput"
+                   class="form-control"
+                   placeholder="Search by title..."
+                   onchange="handleSearch()">
+        </div>
+
+        <div class="col-md-3">
+            <select id="limitSelect"
+                    class="form-select"
+                    onchange="changeLimit()">
+                <option value="5">5 items</option>
+                <option value="10" selected>10 items</option>
+                <option value="20">20 items</option>
+            </select>
+        </div>
     </div>
 
-    <div class="col-md-3">
-        <select id="limitSelect" class="form-select">
-            <option value="5">5 items</option>
-            <option value="10" selected>10 items</option>
-            <option value="20">20 items</option>
-        </select>
+    <!-- TABLE -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle">
+            <thead class="table-dark text-center">
+            <tr>
+                <th>Image</th>
+                <th class="sortable" onclick="sortBy('title')">
+                    Title ⇅
+                </th>
+                <th class="sortable" onclick="sortBy('price')">
+                    Price ⇅
+                </th>
+                <th>Category</th>
+            </tr>
+            </thead>
+
+            <tbody id="productTable"></tbody>
+        </table>
     </div>
-</div>
 
-<table class="table table-bordered table-hover bg-white">
-<thead class="table-dark">
-<tr>
-    <th>ID</th>
-    <th id="sortTitle" class="sortable">Title ⬍</th>
-    <th id="sortPrice" class="sortable">Price ⬍</th>
-    <th>Category</th>
-</tr>
-</thead>
-
-<tbody id="tableBody"></tbody>
-</table>
-
-<nav>
-<ul class="pagination" id="pagination"></ul>
-</nav>
+    <!-- Pagination -->
+    <nav>
+        <ul class="pagination justify-content-center"
+            id="pagination"></ul>
+    </nav>
 
 </div>
-
-<div id="tooltip" class="tooltip-desc"></div>
 
 <script>
 
 let products = [];
-let filtered = [];
+let filteredProducts = [];
 
 let currentPage = 1;
 let limit = 10;
-let sortField = "";
-let sortAsc = true;
+let sortField = null;
+let sortDirection = 1;
 
-const tooltip = document.getElementById("tooltip");
+const PLACEHOLDER =
+"data:image/svg+xml;utf8," +
+"<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'>" +
+"<rect width='60' height='60' fill='%23e9ecef'/></svg>";
 
-// ===== FETCH DATA =====
-async function loadData() {
-    const res = await fetch("https://api.escuelajs.co/api/v1/products");
-    products = await res.json();
-    filtered = [...products];
-    render();
+/* ================= FETCH API ================= */
+
+fetch("https://api.escuelajs.co/api/v1/products")
+.then(res => res.json())
+.then(data => {
+    products = data;
+    filteredProducts = [...products];
+    renderTable();
+});
+
+/* ================= RENDER TABLE ================= */
+
+function renderTable() {
+
+    const table = document.getElementById("productTable");
+    table.innerHTML = "";
+
+    const start = (currentPage - 1) * limit;
+    const pageData = filteredProducts.slice(start, start + limit);
+
+    pageData.forEach(product => {
+
+        const image = safeImage(product.images)
+            || product.category?.image
+            || PLACEHOLDER;
+
+        const row = document.createElement("tr");
+
+        // tooltip bootstrap (description hidden)
+        row.setAttribute("data-bs-toggle","tooltip");
+        row.setAttribute("data-bs-placement","top");
+        row.setAttribute("title", product.description);
+
+        row.innerHTML = `
+            <td class="text-center">
+                <img src="${image}" class="product-img">
+            </td>
+
+            <td class="fw-semibold">
+                ${product.title}
+            </td>
+
+            <td class="text-center">
+                $${product.price}
+            </td>
+
+            <td class="text-center">
+                ${product.category?.name ?? ""}
+            </td>
+        `;
+
+        table.appendChild(row);
+    });
+
+    enableTooltips();
+    renderPagination();
 }
-loadData();
 
-// ===== SEARCH =====
-searchInput.oninput = (e) => {
-    const keyword = e.target.value.toLowerCase();
+/* ================= SEARCH ================= */
 
-    filtered = products.filter(p =>
+function handleSearch() {
+    const keyword =
+        document.getElementById("searchInput")
+        .value.toLowerCase();
+
+    filteredProducts = products.filter(p =>
         p.title.toLowerCase().includes(keyword)
     );
 
     currentPage = 1;
-    render();
-};
+    renderTable();
+}
 
-// ===== LIMIT =====
-limitSelect.onchange = (e) => {
-    limit = Number(e.target.value);
-    currentPage = 1;
-    render();
-};
+/* ================= SORT ================= */
 
-// ===== SORT =====
-function sortBy(field){
-    if(sortField === field)
-        sortAsc = !sortAsc;
-    else{
+function sortBy(field) {
+
+    if (sortField === field)
+        sortDirection *= -1;
+    else {
         sortField = field;
-        sortAsc = true;
+        sortDirection = 1;
     }
 
-    filtered.sort((a,b)=>{
-        if(a[field] < b[field]) return sortAsc?-1:1;
-        if(a[field] > b[field]) return sortAsc?1:-1;
+    filteredProducts.sort((a,b)=>{
+
+        if(a[field] < b[field]) return -1*sortDirection;
+        if(a[field] > b[field]) return 1*sortDirection;
         return 0;
     });
 
-    render();
+    renderTable();
 }
 
-sortTitle.onclick = ()=>sortBy("title");
-sortPrice.onclick = ()=>sortBy("price");
+/* ================= PAGINATION ================= */
 
-// ===== RENDER TABLE =====
-function render(){
+function renderPagination() {
 
-    const start = (currentPage-1)*limit;
-    const pageData = filtered.slice(start,start+limit);
+    const totalPages =
+        Math.ceil(filteredProducts.length / limit);
 
-    tableBody.innerHTML="";
+    const pagination =
+        document.getElementById("pagination");
 
-    pageData.forEach(product=>{
-
-        const tr=document.createElement("tr");
-
-        tr.innerHTML=`
-            <td>${product.id}</td>
-            <td>${product.title}</td>
-            <td>$${product.price}</td>
-            <td>${product.category.name}</td>
-        `;
-
-        tr.onmousemove=(e)=>{
-            tooltip.style.display="block";
-            tooltip.style.left=e.pageX+15+"px";
-            tooltip.style.top=e.pageY+15+"px";
-            tooltip.innerText=product.description;
-        };
-
-        tr.onmouseleave=()=>{
-            tooltip.style.display="none";
-        };
-
-        tableBody.appendChild(tr);
-    });
-
-    renderPagination();
-}
-
-// ===== PAGINATION =====
-function renderPagination(){
-
-    const totalPages=Math.ceil(filtered.length/limit);
-    pagination.innerHTML="";
+    pagination.innerHTML = "";
 
     for(let i=1;i<=totalPages;i++){
-
-        const li=document.createElement("li");
-        li.className="page-item "+(i===currentPage?"active":"");
-
-        li.innerHTML=`<a class="page-link">${i}</a>`;
-
-        li.onclick=()=>{
-            currentPage=i;
-            render();
-        };
-
-        pagination.appendChild(li);
+        pagination.innerHTML += `
+            <li class="page-item ${i===currentPage?'active':''}">
+                <button class="page-link"
+                        onclick="goToPage(${i})">${i}</button>
+            </li>`;
     }
 }
 
+function goToPage(page){
+    currentPage = page;
+    renderTable();
+}
+
+/* ================= LIMIT ================= */
+
+function changeLimit(){
+    limit = parseInt(
+        document.getElementById("limitSelect").value
+    );
+    currentPage = 1;
+    renderTable();
+}
+
+/* ================= IMAGE SAFE ================= */
+
+function safeImage(images){
+    if(!Array.isArray(images)) return "";
+    return images.find(x => typeof x==="string") || "";
+}
+
+/* ================= TOOLTIP ================= */
+
+function enableTooltips(){
+    const tooltipTriggerList =
+        [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+
+    tooltipTriggerList.map(el =>
+        new bootstrap.Tooltip(el));
+}
+
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,22 @@
+.sortable {
+    cursor: pointer;
+}
+
+.product-img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 8px;
+}
+
+/* Ẩn description */
+.description-tooltip {
+    display: none;
+}
+
+/* Hover hiển thị description */
+.product-row:hover .description-tooltip {
+    display: table-cell;
+    background-color: #f8f9fa;
+    font-size: 13px;
+}
